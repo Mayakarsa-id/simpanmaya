@@ -8,6 +8,7 @@ import { RegisterSuccessPage } from "./pages/RegisterSuccessPage"
 import { LoginPage } from "./pages/LoginPage"
 import { findUser, createUser } from "./data/users"
 import { generateSecret, getOTPAuthUrl, verifyTOTP } from "./utils/totp"
+import QRCode from "qrcode"
 
 const app = new Hono()
 
@@ -63,8 +64,15 @@ app.post("/auth/register", async (c) => {
     const secret = generateSecret(20)
     createUser(username, email, secret)
     const otpauthUrl = getOTPAuthUrl({ username, secret, issuer: "SimpanMaya" })
+    const qrDataUrl = await QRCode.toDataURL(otpauthUrl, {
+      width: 240,
+      margin: 1,
+      color: { dark: "#000000", light: "#ffffff" },
+    })
     // Show QR — do not auto-login, user must login with TOTP next
-    return c.render(<RegisterSuccessPage username={username} email={email} secret={secret} otpauthUrl={otpauthUrl} />)
+    return c.render(
+      <RegisterSuccessPage username={username} email={email} secret={secret} otpauthUrl={otpauthUrl} qrDataUrl={qrDataUrl} />,
+    )
   } catch (e: any) {
     return c.render(<RegisterPage error={e.message ?? "Gagal register"} username={username} email={rawEmail} />)
   }

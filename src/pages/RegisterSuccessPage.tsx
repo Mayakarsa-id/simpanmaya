@@ -5,10 +5,10 @@ type Props = {
   email: string
   secret: string
   otpauthUrl: string
+  qrDataUrl: string
 }
 
-export const RegisterSuccessPage = ({ username, email, secret, otpauthUrl }: Props) => {
-  const qrExternal = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(otpauthUrl)}`
+export const RegisterSuccessPage = ({ username, email, secret, otpauthUrl, qrDataUrl }: Props) => {
   return (
     <AuthLayout
       title="Scan QR TOTP"
@@ -23,7 +23,7 @@ export const RegisterSuccessPage = ({ username, email, secret, otpauthUrl }: Pro
         <div class="qr-image-wrap">
           <img
             class="qr-image"
-            src={qrExternal}
+            src={qrDataUrl}
             alt="TOTP QR"
             width={240}
             height={240}
