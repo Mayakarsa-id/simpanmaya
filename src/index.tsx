@@ -8,7 +8,7 @@ import { RegisterSuccessPage } from "./pages/RegisterSuccessPage"
 import { LoginPage } from "./pages/LoginPage"
 import { findUser, createUser } from "./data/users"
 import { generateSecret, getOTPAuthUrl, verifyTOTP } from "./utils/totp"
-import QRCode from "qrcode"
+import { renderSVG } from "uqr"
 
 const app = new Hono()
 
@@ -64,11 +64,9 @@ app.post("/auth/register", async (c) => {
     const secret = generateSecret(20)
     createUser(username, email, secret)
     const otpauthUrl = getOTPAuthUrl({ username, secret, issuer: "SimpanMaya" })
-    const qrDataUrl = await QRCode.toDataURL(otpauthUrl, {
-      width: 240,
-      margin: 1,
-      color: { dark: "#000000", light: "#ffffff" },
-    })
+    // Pure JS SVG — no Node deps, works on normal Workers runtime (no nodejs_compat needed)
+    const svg = renderSVG(otpauthUrl, { border: 1, blackColor: "#000000", whiteColor: "#ffffff" })
+    const qrDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
     // Show QR — do not auto-login, user must login with TOTP next
     return c.render(
       <RegisterSuccessPage username={username} email={email} secret={secret} otpauthUrl={otpauthUrl} qrDataUrl={qrDataUrl} />,

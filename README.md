@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/pnpm-11.24-F69220?style=for-the-badge&logo=pnpm" alt="pnpm"/>
   <img src="https://img.shields.io/badge/Style-Neobrutalism-FFDE59?style=for-the-badge" alt="Neobrutalism"/>
   <img src="https://img.shields.io/badge/Auth-TOTP-00E5FF?style=for-the-badge" alt="TOTP"/>
-  <img src="https://img.shields.io/badge/QR-qrcode-000000?style=for-the-badge" alt="qrcode"/>
+  <img src="https://img.shields.io/badge/QR-uqr-000000?style=for-the-badge" alt="uqr"/>
 </p>
 
 ---
@@ -54,7 +54,7 @@
 - Folder deep-download collects descendants recursively and triggers blob downloads
 
 **Auth (Password-less TOTP)**
-- `Register` — only `username` + `email` → generate 20-byte base32 secret → `otpauth://totp/SimpanMaya:user?secret=...` → QR **via `qrcode` lib (data URL, offline)** + manual secret
+- `Register` — only `username` + `email` → generate 20-byte base32 secret → `otpauth://totp/SimpanMaya:user?secret=...` → QR **via `uqr` lib (SVG data URL, offline, no nodejs_compat)** + manual secret
 - `Login` — only `username` + 6-digit TOTP (30s window ±1, SHA1, WebCrypto)
 - In-memory users (`src/data/users.ts`, `globalThis` persisted), session cookie `simpanmaya_session` (httpOnly, 7d, Lax), `demo` seeded (`JBSWY3DPEHPK3PXP`)
 - Drive (`/`) protected — unauthenticated → `302 /auth/login`; Share remains public
@@ -72,7 +72,7 @@
 | Package Manager | **pnpm 11.24** (primary, `pnpm-lock.yaml` + `pnpm-workspace.yaml`) — npm also works |
 | Language | TypeScript (jsxImportSource `hono/jsx`) |
 | Crypto | Web Crypto (`SubtleCrypto` HMAC-SHA1) — no external OTP deps |
-| QR | **qrcode 1.5.4** (`QRCode.toDataURL` → `data:image/png;base64,...` offline, no external API) + `@types/qrcode` |
+| QR | **uqr 0.1.3** (`renderSVG` → `data:image/svg+xml;utf8,...` pure JS, no Node deps, normal Workers runtime) |
 | Style | Vanilla CSS, CSS variables, neobrutalism, Google Fonts (`Space Grotesk`, `JetBrains Mono`) |
 | State | Client-side `fileSystem` + `clipboard` + `selectedItems` (drive) / `sharePath` (share) |
 
@@ -103,7 +103,7 @@ src/
 │   ├── DrivePage.tsx
 │   ├── SharePage.tsx         # public-share layout (no sidebar/search)
 │   ├── RegisterPage.tsx
-│   ├── RegisterSuccessPage.tsx # QR (qrcode data URL) + secret + otpauth URL
+│   ├── RegisterSuccessPage.tsx # QR (uqr SVG data URL) + secret + otpauth URL
 │   └── LoginPage.tsx
 ├── utils/
 │   └── totp.ts       # base32, generateSecret, getOTPAuthUrl, verifyTOTP
@@ -162,7 +162,7 @@ pnpm cf-typegen
 | `GET` | `/` | required | Drive — My Drive / Trash, file table, bulk & context actions |
 | `GET` | `/share/:id` | public | Published share — owner banner on top, selectable list (Open/Download only) |
 | `GET` | `/auth/register` | public | Register form (username, email) |
-| `POST` | `/auth/register` | public | Create user → generate QR via `qrcode` lib → render QR page |
+| `POST` | `/auth/register` | public | Create user → generate QR via `uqr` lib (SVG) → render QR page |
 | `GET` | `/auth/login` | public | Login form (username, TOTP 6-digit) |
 | `POST` | `/auth/login` | public | Verify TOTP → set `simpanmaya_session` → 302 `/` |
 | `GET` | `/auth/logout` | any | Clear cookie → 302 `/auth/login` |
@@ -178,8 +178,8 @@ pnpm cf-typegen
 Register: username + email 
   → POST /auth/register 
   → generateSecret(20) base32 → createUser → getOTPAuthUrl
-  → QRCode.toDataURL(otpauthUrl) → data:image/png;base64,... 
-  → RegisterSuccessPage: QR (qrcode lib, offline) + secret + otpauth URL + Copy buttons
+  → renderSVG(otpauthUrl) → data:image/svg+xml;utf8,... (uqr pure JS)
+  → RegisterSuccessPage: QR (uqr SVG data URL, offline, no nodejs_compat) + secret + otpauth URL + Copy buttons
 
 Login: username + token (6-digit)
   → POST /auth/login
@@ -198,9 +198,9 @@ Share: GET /share/:id → no auth check → always 200 (banner + list)
 - `getOTPAuthUrl({username, secret})` → `otpauth://totp/SimpanMaya:${username}?secret=...&issuer=SimpanMaya&algorithm=SHA1&digits=6&period=30`
 - `verifyTOTP(secret, token)` → `hotp` via `crypto.subtle.sign(HMAC-SHA1)`, counter `floor(Date.now()/1000/30)`, checks `counter-1..counter+1`
 
-**QR Details (`qrcode`):**
-- `src/index.tsx` `POST /auth/register` → `await QRCode.toDataURL(otpauthUrl, {width:240, margin:1, color:{dark:"#000", light:"#fff"}})` → passed as `qrDataUrl` to `RegisterSuccessPage`
-- No external `api.qrserver.com` call — fully offline, Workers-compatible (pure JS, no canvas native dep)
+**QR Details (`uqr`):**
+- `src/index.tsx` `POST /auth/register` → `renderSVG(otpauthUrl, {border:1})` → `data:image/svg+xml;utf8,${encodeURIComponent(svg)}` → passed as `qrDataUrl` to `RegisterSuccessPage`
+- No external `api.qrserver.com`, no `qrcode`/`pngjs` Node deps, no `nodejs_compat` flag — pure JS, normal Workers runtime, smaller bundle
 
 ---
 
@@ -283,7 +283,7 @@ const app = new Hono<{ Bindings: CloudflareBindings }>()
 
 - **No password** — TOTP only (6-digit, SHA1, 30s, window 1)
 - **No external OTP deps** — pure Web Crypto, Workers-compatible
-- **QR via `qrcode` lib** — `QRCode.toDataURL` generates `data:image/png;base64,...` offline (no `api.qrserver.com`, no network, Workers-compatible)
+- **QR via `uqr` lib** — `renderSVG` generates `data:image/svg+xml;utf8,...` offline (no `api.qrserver.com`, no Node `fs`/`zlib`, normal Workers runtime)
 - **Store** is in-memory `Map` (demo) — for production, replace `src/data/users.ts` with D1/KV/R2; session cookie is `httpOnly` but not `Secure` in dev
 - **Share** is intentionally public — do not store sensitive files as `shared:true` in seed for demo
 - **FileSystem** is client-side mutable; server `initialFiles` is seed — for persistence, add D1 + API
